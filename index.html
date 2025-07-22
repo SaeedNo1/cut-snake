@@ -116,6 +116,20 @@
                 this.isBoss = isBoss;
                 this.alive = true;
                 this.lastDirection = DIRECTIONS.RIGHT;
+                this.grow = false;
+                
+                // 设置初始长度
+                if (isPlayer) {
+                    // 玩家初始长度为3
+                    for (let i = 1; i < 3; i++) {
+                        this.body.push({ x: x - i, y: y });
+                    }
+                } else {
+                    // AI蛇初始长度为2
+                    for (let i = 1; i < 2; i++) {
+                        this.body.push({ x: x - i, y: y });
+                    }
+                }
             }
 
             move() {
@@ -163,23 +177,6 @@
                     }
                 }
 
-                // 检查是否吃到其他蛇（变成的食物）
-                if (!ateFood) {
-                    for (let i = otherSnakes.length - 1; i >= 0; i--) {
-                        const snake = otherSnakes[i];
-                        if (snake.alive && snake.body.length > 0) {
-                            const snakeHead = snake.body[0];
-                            if (head.x === snakeHead.x && head.y === snakeHead.y) {
-                                // 吃掉其他蛇的头部，整个蛇变成食物
-                                this.grow = true;
-                                snake.turnIntoFood();
-                                ateFood = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-
                 if (!ateFood) {
                     this.body.pop();
                 } else {
@@ -194,7 +191,6 @@
             }
 
             checkOtherSnakeCollision(head) {
-                // 检查与所有其他蛇的碰撞
                 for (let snake of otherSnakes) {
                     if (snake.alive && snake !== this) {
                         if (snake.body.some(segment => segment.x === head.x && segment.y === head.y)) {
@@ -211,12 +207,10 @@
                     return;
                 }
                 
-                // 变成食物
                 const head = this.body[0];
                 foods.push({ x: head.x, y: head.y, type: 'enemy', color: '#FFD700' });
                 this.alive = false;
                 
-                // 从其他蛇数组中移除
                 const index = otherSnakes.indexOf(this);
                 if (index > -1) {
                     otherSnakes.splice(index, 1);
@@ -230,7 +224,6 @@
                 if (this.isPlayer) {
                     gameOver();
                 } else {
-                    // 普通蛇死亡后变成食物
                     const head = this.body[0];
                     foods.push({ x: head.x, y: head.y, type: 'enemy', color: '#FFD700' });
                     
@@ -245,7 +238,7 @@
             changeDirection(newDirection) {
                 if (!this.alive) return;
                 
-                // 防止反向移动
+                // 修复转向逻辑 - 现在可以正常左转、右转
                 const opposites = {
                     [DIRECTIONS.UP]: DIRECTIONS.DOWN,
                     [DIRECTIONS.DOWN]: DIRECTIONS.UP,
@@ -262,47 +255,69 @@
                 if (!this.alive) return;
 
                 this.body.forEach((segment, index) => {
+                    // 绘制圆形蛇身
+                    ctx.beginPath();
+                    ctx.arc(
+                        segment.x * GRID_SIZE + GRID_SIZE / 2,
+                        segment.y * GRID_SIZE + GRID_SIZE / 2,
+                        GRID_SIZE / 2 - 2,
+                        0,
+                        2 * Math.PI
+                    );
                     ctx.fillStyle = this.color;
-                    if (this.isBoss) {
-                        ctx.fillStyle = '#8B0000'; // 深红色BOSS
-                    } else if (index === 0) {
-                        // 头部稍微亮一点
+                    
+                    // 头部颜色稍微亮一点
+                    if (index === 0) {
                         const brightColor = this.adjustBrightness(this.color, 30);
                         ctx.fillStyle = brightColor;
                     }
-
-                    ctx.fillRect(
-                        segment.x * GRID_SIZE + 1,
-                        segment.y * GRID_SIZE + 1,
-                        GRID_SIZE - 2,
-                        GRID_SIZE - 2
-                    );
-
-                    // 绘制眼睛（仅对玩家和BOSS的头部）
+                    
+                    ctx.fill();
+                    
+                    // 绘制眼睛（仅头部）
                     if (index === 0 && (this.isPlayer || this.isBoss)) {
-                        ctx.fillStyle = 'white';
-                        const eyeSize = 3;
-                        const eyeOffset = 5;
-                        
-                        if (this.direction.x === 1) { // 向右
-                            ctx.fillRect(segment.x * GRID_SIZE + GRID_SIZE - eyeOffset, segment.y * GRID_SIZE + 4, eyeSize, eyeSize);
-                            ctx.fillRect(segment.x * GRID_SIZE + GRID_SIZE - eyeOffset, segment.y * GRID_SIZE + GRID_SIZE - 7, eyeSize, eyeSize);
-                        } else if (this.direction.x === -1) { // 向左
-                            ctx.fillRect(segment.x * GRID_SIZE + 2, segment.y * GRID_SIZE + 4, eyeSize, eyeSize);
-                            ctx.fillRect(segment.x * GRID_SIZE + 2, segment.y * GRID_SIZE + GRID_SIZE - 7, eyeSize, eyeSize);
-                        } else if (this.direction.y === -1) { // 向上
-                            ctx.fillRect(segment.x * GRID_SIZE + 4, segment.y * GRID_SIZE + 2, eyeSize, eyeSize);
-                            ctx.fillRect(segment.x * GRID_SIZE + GRID_SIZE - 7, segment.y * GRID_SIZE + 2, eyeSize, eyeSize);
-                        } else if (this.direction.y === 1) { // 向下
-                            ctx.fillRect(segment.x * GRID_SIZE + 4, segment.y * GRID_SIZE + GRID_SIZE - eyeOffset, eyeSize, eyeSize);
-                            ctx.fillRect(segment.x * GRID_SIZE + GRID_SIZE - 7, segment.y * GRID_SIZE + GRID_SIZE - eyeOffset, eyeSize, eyeSize);
-                        }
+                        this.drawEyes(segment);
                     }
                 });
             }
 
+            drawEyes(segment) {
+                ctx.fillStyle = 'white';
+                const eyeSize = 3;
+                const eyeOffset = 5;
+                
+                if (this.direction.x === 1) { // 向右
+                    ctx.beginPath();
+                    ctx.arc(segment.x * GRID_SIZE + GRID_SIZE - eyeOffset, segment.y * GRID_SIZE + 5, eyeSize, 0, 2 * Math.PI);
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(segment.x * GRID_SIZE + GRID_SIZE - eyeOffset, segment.y * GRID_SIZE + GRID_SIZE - 5, eyeSize, 0, 2 * Math.PI);
+                    ctx.fill();
+                } else if (this.direction.x === -1) { // 向左
+                    ctx.beginPath();
+                    ctx.arc(segment.x * GRID_SIZE + 5, segment.y * GRID_SIZE + 5, eyeSize, 0, 2 * Math.PI);
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(segment.x * GRID_SIZE + 5, segment.y * GRID_SIZE + GRID_SIZE - 5, eyeSize, 0, 2 * Math.PI);
+                    ctx.fill();
+                } else if (this.direction.y === -1) { // 向上
+                    ctx.beginPath();
+                    ctx.arc(segment.x * GRID_SIZE + 5, segment.y * GRID_SIZE + 5, eyeSize, 0, 2 * Math.PI);
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(segment.x * GRID_SIZE + GRID_SIZE - 5, segment.y * GRID_SIZE + 5, eyeSize, 0, 2 * Math.PI);
+                    ctx.fill();
+                } else if (this.direction.y === 1) { // 向下
+                    ctx.beginPath();
+                    ctx.arc(segment.x * GRID_SIZE + 5, segment.y * GRID_SIZE + GRID_SIZE - 5, eyeSize, 0, 2 * Math.PI);
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(segment.x * GRID_SIZE + GRID_SIZE - 5, segment.y * GRID_SIZE + GRID_SIZE - 5, eyeSize, 0, 2 * Math.PI);
+                    ctx.fill();
+                }
+            }
+
             adjustBrightness(color, amount) {
-                // 简单的颜色亮度调整
                 const num = parseInt(color.replace("#", ""), 16);
                 const amt = Math.round(2.55 * amount);
                 const R = (num >> 16) + amt;
@@ -347,7 +362,7 @@
         function initGame() {
             gameRunning = true;
             
-            // 创建玩家
+            // 创建玩家（初始长度3）
             player = new Snake(Math.floor(GRID_WIDTH / 2), Math.floor(GRID_HEIGHT / 2), '#00FF00', true);
             
             // 清空其他蛇和食物
@@ -378,7 +393,7 @@
                 }
             });
 
-            // 检查胜利条件
+            // 检查游戏状态
             checkGameStatus();
 
             // 绘制
@@ -395,7 +410,7 @@
             const head = snake.body[0];
             let newDirection = snake.direction;
 
-            // 寻找最近的食物或玩家
+            // 寻找最近的目标
             let target = findNearestTarget(snake);
 
             if (target) {
@@ -487,30 +502,25 @@
                 return safeDirections[Math.floor(Math.random() * safeDirections.length)];
             }
 
-            // 如果没有安全方向，返回当前方向
             return snake.direction;
         }
 
         // 检查游戏状态
         function checkGameStatus() {
-            // 检查玩家是否死亡
             if (!player.alive) {
                 gameOver();
                 return;
             }
 
-            // 检查是否需要添加普通对手
             const aliveNormalSnakes = otherSnakes.filter(snake => snake.alive && !snake.isBoss);
             if (aliveNormalSnakes.length < 2 && !bossAppeared) {
                 addNormalEnemy();
             }
 
-            // 检查是否应该出现BOSS
             if (round >= 3 && !bossAppeared && aliveNormalSnakes.length === 0) {
                 spawnBoss();
             }
 
-            // 检查BOSS是否被击败
             if (bossAppeared && !bossDefeated) {
                 const boss = otherSnakes.find(snake => snake.isBoss && snake.alive);
                 if (!boss) {
@@ -522,7 +532,6 @@
                 }
             }
 
-            // 检查是否所有蛇都死亡
             const allSnakesDead = otherSnakes.every(snake => !snake.alive) && !player.alive;
             if (allSnakesDead) {
                 gameWin();
@@ -571,19 +580,16 @@
 
         // 检查位置是否被占用
         function isPositionOccupied(x, y) {
-            // 检查玩家
             if (player.body.some(segment => segment.x === x && segment.y === y)) {
                 return true;
             }
 
-            // 检查其他蛇
             for (let snake of otherSnakes) {
                 if (snake.alive && snake.body.some(segment => segment.x === x && segment.y === y)) {
                     return true;
                 }
             }
 
-            // 检查食物
             if (foods.some(food => food.x === x && food.y === y)) {
                 return true;
             }
@@ -608,35 +614,21 @@
 
         // 绘制游戏
         function draw() {
-            // 清空画布
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-            // 绘制网格（可选）
-            ctx.strokeStyle = '#111';
-            ctx.lineWidth = 1;
-            for (let x = 0; x <= CANVAS_WIDTH; x += GRID_SIZE) {
-                ctx.beginPath();
-                ctx.moveTo(x, 0);
-                ctx.lineTo(x, CANVAS_HEIGHT);
-                ctx.stroke();
-            }
-            for (let y = 0; y <= CANVAS_HEIGHT; y += GRID_SIZE) {
-                ctx.beginPath();
-                ctx.moveTo(0, y);
-                ctx.lineTo(CANVAS_WIDTH, y);
-                ctx.stroke();
-            }
-
             // 绘制食物
             foods.forEach(food => {
-                ctx.fillStyle = food.color;
-                ctx.fillRect(
-                    food.x * GRID_SIZE + 2,
-                    food.y * GRID_SIZE + 2,
-                    GRID_SIZE - 4,
-                    GRID_SIZE - 4
+                ctx.beginPath();
+                ctx.arc(
+                    food.x * GRID_SIZE + GRID_SIZE / 2,
+                    food.y * GRID_SIZE + GRID_SIZE / 2,
+                    GRID_SIZE / 2 - 2,
+                    0,
+                    2 * Math.PI
                 );
+                ctx.fillStyle = food.color;
+                ctx.fill();
             });
 
             // 绘制蛇
