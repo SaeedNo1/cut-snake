@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高级贪吃蛇大战</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: Arial, sans-serif;
+        }
+        .game-container {
+            text-align: center;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+        canvas {
+            border: 3px solid #fff;
+            border-radius: 10px;
+            background: #000;
+        }
+        .info {
+            color: white;
+            margin: 10px 0;
+            font-size: 18px;
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+        }
+        .status {
+            color: #FFD700;
+            font-weight: bold;
+            font-size: 20px;
+            margin: 10px 0;
+        }
+        .controls {
+            color: white;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        .boss-warning {
+            color: #FF4444;
+            font-size: 24px;
+            font-weight: bold;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1 style="color: white; margin-top: 0;">🐍 高级贪吃蛇大战 🐍</h1>
+        <div class="status" id="status">准备开始 - 使用 WASD 或方向键控制</div>
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div class="info">
+            <div>你的长度: <span id="playerLength">1</span></div>
+            <div>普通对手: <span id="normalEnemies">0</span></div>
+            <div>BOSS状态: <span id="bossStatus">未出现</span></div>
+            <div>回合: <span id="round">1</span></div>
+        </div>
+        <div class="controls">
+            使用 WASD 或方向键控制你的蛇移动<br>
+            🔴 普通对手 | ⚫ BOSS | 🟡 食物 | 🟢 你的蛇
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const statusDiv = document.getElementById('status');
+        const playerLengthDiv = document.getElementById('playerLength');
+        const normalEnemiesDiv = document.getElementById('normalEnemies');
+        const bossStatusDiv = document.getElementById('bossStatus');
+        const roundDiv = document.getElementById('round');
+
+        // 游戏配置
+        const GRID_SIZE = 20;
+        const CANVAS_WIDTH = canvas.width;
+        const CANVAS_HEIGHT = canvas.height;
+        const GRID_WIDTH = CANVAS_WIDTH / GRID_SIZE;
+        const GRID_HEIGHT = CANVAS_HEIGHT / GRID_SIZE;
+
+        // 游戏状态
+        let gameRunning = false;
+        let gameLoop;
+        let round = 1;
+        let bossAppeared = false;
+        let bossDefeated = false;
+
+        // 方向
+        const DIRECTIONS = {
+            UP: { x: 0, y: -1 },
+            DOWN: { x: 0, y: 1 },
+            LEFT: { x: -1, y: 0 },
+            RIGHT: { x: 1, y: 0 }
+        };
+
+        // 蛇类
+        class Snake {
+            constructor(x, y, color, isPlayer = false, isBoss = false) {
+                this.body = [{ x, y }];
+                this.direction = DIRECTIONS.RIGHT;
+                this.color = color;
+                this.isPlayer = isPlayer;
+                this.isBoss = isBoss;
+                this.alive = true;
+                this.lastDirection = DIRECTIONS.RIGHT;
+            }
+
+            move() {
+                if (!this.alive) return;
+
+                const head = { ...this.body[0] };
+                head.x += this.direction.x;
+                head.y += this.direction.y;
+
+                // 边界检测
+                if (head.x < 0 || head.x >= GRID_WIDTH || head.y < 0 || head.y >= GRID_HEIGHT) {
+                    this.die();
+                    return;
+                }
+
+                // 自身碰撞检测
+                if (this.checkSelfCollision(head)) {
+                    if (!this.isPlayer) {
+                        this.turnIntoFood();
+                    } else {
+                        this.die();
+                    }
+                    return;
+                }
+
+                // 与其他蛇的碰撞检测
+                if (this.checkOtherSnakeCollision(head)) {
+                    if (!this.isPlayer) {
+                        this.turnIntoFood();
+                    } else {
+                        this.die();
+                    }
+                    return;
+                }
+
+                this.body.unshift(head);
+
+                // 检查是否吃到食物
+                let ateFood = false;
+                for (let i = foods.length - 1; i >= 0; i--) {
+                    if (head.x === foods[i].x && head.y === foods[i].y) {
+                        foods.splice(i, 1);
+                        ateFood = true;
+                        break;
+                    }
+                }
+
+                // 检查是否吃到其他蛇（变成的食物）
+                if (!ateFood) {
+                    for (let i = otherSnakes.length - 1; i >= 0; i--) {
+                        const snake = otherSnakes[i];
+                        if (snake.alive && snake.body.length > 0) {
+                            const snakeHead = snake.body[0];
+                            if (head.x === snakeHead.x && head.y === snakeHead.y) {
+                                // 吃掉其他蛇的头部，整个蛇变成食物
+                                this.grow = true;
+                                snake.turnIntoFood();
+                                ateFood = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (!ateFood) {
+                    this.body.pop();
+                } else {
+                    this.grow = true;
+                }
+
+                this.lastDirection = { ...this.direction };
+            }
+
+            checkSelfCollision(head) {
+                return this.body.some(segment => segment.x === head.x && segment.y === head.y);
+            }
+
+            checkOtherSnakeCollision(head) {
+                // 检查与所有其他蛇的碰撞
+                for (let snake of otherSnakes) {
+                    if (snake.alive && snake !== this) {
+                        if (snake.body.some(segment => segment.x === head.x && segment.y === head.y)) {
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }
+
+            turnIntoFood() {
+                if (this.isPlayer) {
+                    gameOver();
+                    return;
+                }
+                
+                // 变成食物
+                const head = this.body[0];
+                foods.push({ x: head.x, y: head.y, type: 'enemy', color: '#FFD700' });
+                this.alive = false;
+                
+                // 从其他蛇数组中移除
+                const index = otherSnakes.indexOf(this);
+                if (index > -1) {
+                    otherSnakes.splice(index, 1);
+                }
+                
+                updateUI();
+            }
+
+            die() {
+                this.alive = false;
+                if (this.isPlayer) {
+                    gameOver();
+                } else {
+                    // 普通蛇死亡后变成食物
+                    const head = this.body[0];
+                    foods.push({ x: head.x, y: head.y, type: 'enemy', color: '#FFD700' });
+                    
+                    const index = otherSnakes.indexOf(this);
+                    if (index > -1) {
+                        otherSnakes.splice(index, 1);
+                    }
+                }
+                updateUI();
+            }
+
+            changeDirection(newDirection) {
+                if (!this.alive) return;
+                
+                // 防止反向移动
+                const opposites = {
+                    [DIRECTIONS.UP]: DIRECTIONS.DOWN,
+                    [DIRECTIONS.DOWN]: DIRECTIONS.UP,
+                    [DIRECTIONS.LEFT]: DIRECTIONS.RIGHT,
+                    [DIRECTIONS.RIGHT]: DIRECTIONS.LEFT
+                };
+
+                if (newDirection !== opposites[this.direction]) {
+                    this.direction = newDirection;
+                }
+            }
+
+            draw() {
+                if (!this.alive) return;
+
+                this.body.forEach((segment, index) => {
+                    ctx.fillStyle = this.color;
+                    if (this.isBoss) {
+                        ctx.fillStyle = '#8B0000'; // 深红色BOSS
+                    } else if (index === 0) {
+                        // 头部稍微亮一点
+                        const brightColor = this.adjustBrightness(this.color, 30);
+                        ctx.fillStyle = brightColor;
+                    }
+
+                    ctx.fillRect(
+                        segment.x * GRID_SIZE + 1,
+                        segment.y * GRID_SIZE + 1,
+                        GRID_SIZE - 2,
+                        GRID_SIZE - 2
+                    );
+
+                    // 绘制眼睛（仅对玩家和BOSS的头部）
+                    if (index === 0 && (this.isPlayer || this.isBoss)) {
+                        ctx.fillStyle = 'white';
+                        const eyeSize = 3;
+                        const eyeOffset = 5;
+                        
+                        if (this.direction.x === 1) { // 向右
+                            ctx.fillRect(segment.x * GRID_SIZE + GRID_SIZE - eyeOffset, segment.y * GRID_SIZE + 4, eyeSize, eyeSize);
+                            ctx.fillRect(segment.x * GRID_SIZE + GRID_SIZE - eyeOffset, segment.y * GRID_SIZE + GRID_SIZE - 7, eyeSize, eyeSize);
+                        } else if (this.direction.x === -1) { // 向左
+                            ctx.fillRect(segment.x * GRID_SIZE + 2, segment.y * GRID_SIZE + 4, eyeSize, eyeSize);
+                            ctx.fillRect(segment.x * GRID_SIZE + 2, segment.y * GRID_SIZE + GRID_SIZE - 7, eyeSize, eyeSize);
+                        } else if (this.direction.y === -1) { // 向上
+                            ctx.fillRect(segment.x * GRID_SIZE + 4, segment.y * GRID_SIZE + 2, eyeSize, eyeSize);
+                            ctx.fillRect(segment.x * GRID_SIZE + GRID_SIZE - 7, segment.y * GRID_SIZE + 2, eyeSize, eyeSize);
+                        } else if (this.direction.y === 1) { // 向下
+                            ctx.fillRect(segment.x * GRID_SIZE + 4, segment.y * GRID_SIZE + GRID_SIZE - eyeOffset, eyeSize, eyeSize);
+                            ctx.fillRect(segment.x * GRID_SIZE + GRID_SIZE - 7, segment.y * GRID_SIZE + GRID_SIZE - eyeOffset, eyeSize, eyeSize);
+                        }
+                    }
+                });
+            }
+
+            adjustBrightness(color, amount) {
+                // 简单的颜色亮度调整
+                const num = parseInt(color.replace("#", ""), 16);
+                const amt = Math.round(2.55 * amount);
+                const R = (num >> 16) + amt;
+                const G = (num >> 8 & 0x00FF) + amt;
+                const B = (num & 0x0000FF) + amt;
+                return "#" + (0x1000000 + (R < 255 ? R < 1 ? 0 : R : 255) * 0x10000 +
+                    (G < 255 ? G < 1 ? 0 : G : 255) * 0x100 +
+                    (B < 255 ? B < 1 ? 0 : B : 255)).toString(16).slice(1);
+            }
+        }
+
+        // 游戏对象
+        let player;
+        let otherSnakes = [];
+        let foods = [];
+
+        // 键盘控制
+        document.addEventListener('keydown', (e) => {
+            if (!gameRunning || !player.alive) return;
+
+            switch (e.key.toLowerCase()) {
+                case 'w':
+                case 'arrowup':
+                    player.changeDirection(DIRECTIONS.UP);
+                    break;
+                case 's':
+                case 'arrowdown':
+                    player.changeDirection(DIRECTIONS.DOWN);
+                    break;
+                case 'a':
+                case 'arrowleft':
+                    player.changeDirection(DIRECTIONS.LEFT);
+                    break;
+                case 'd':
+                case 'arrowright':
+                    player.changeDirection(DIRECTIONS.RIGHT);
+                    break;
+            }
+        });
+
+        // 初始化游戏
+        function initGame() {
+            gameRunning = true;
+            
+            // 创建玩家
+            player = new Snake(Math.floor(GRID_WIDTH / 2), Math.floor(GRID_HEIGHT / 2), '#00FF00', true);
+            
+            // 清空其他蛇和食物
+            otherSnakes = [];
+            foods = [];
+            
+            round = 1;
+            bossAppeared = false;
+            bossDefeated = false;
+            
+            // 开始游戏循环
+            gameLoop = setInterval(update, 150);
+            updateUI();
+        }
+
+        // 更新游戏状态
+        function update() {
+            if (!gameRunning) return;
+
+            // 移动所有蛇
+            player.move();
+            otherSnakes.forEach(snake => snake.move());
+
+            // AI 控制其他蛇
+            otherSnakes.forEach(snake => {
+                if (snake.alive) {
+                    aiControl(snake);
+                }
+            });
+
+            // 检查胜利条件
+            checkGameStatus();
+
+            // 绘制
+            draw();
+
+            // 更新UI
+            updateUI();
+        }
+
+        // AI 控制
+        function aiControl(snake) {
+            if (!snake.alive) return;
+
+            const head = snake.body[0];
+            let newDirection = snake.direction;
+
+            // 寻找最近的食物或玩家
+            let target = findNearestTarget(snake);
+
+            if (target) {
+                newDirection = getDirectionTowards(snake, target);
+            } else {
+                // 随机移动，避免撞墙和其他蛇
+                newDirection = getRandomSafeDirection(snake);
+            }
+
+            snake.changeDirection(newDirection);
+        }
+
+        // 寻找最近目标
+        function findNearestTarget(snake) {
+            let nearest = null;
+            let minDistance = Infinity;
+
+            // 寻找玩家
+            const playerHead = player.body[0];
+            const playerDistance = Math.abs(playerHead.x - snake.body[0].x) + Math.abs(playerHead.y - snake.body[0].y);
+            if (playerDistance < minDistance) {
+                minDistance = playerDistance;
+                nearest = playerHead;
+            }
+
+            // 寻找食物
+            foods.forEach(food => {
+                const distance = Math.abs(food.x - snake.body[0].x) + Math.abs(food.y - snake.body[0].y);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    nearest = food;
+                }
+            });
+
+            return nearest;
+        }
+
+        // 获取朝向目标的方向
+        function getDirectionTowards(snake, target) {
+            const head = snake.body[0];
+            const dx = target.x - head.x;
+            const dy = target.y - head.y;
+
+            if (Math.abs(dx) > Math.abs(dy)) {
+                return dx > 0 ? DIRECTIONS.RIGHT : DIRECTIONS.LEFT;
+            } else {
+                return dy > 0 ? DIRECTIONS.DOWN : DIRECTIONS.UP;
+            }
+        }
+
+        // 获取安全随机方向
+        function getRandomSafeDirection(snake) {
+            const possibleDirections = [DIRECTIONS.UP, DIRECTIONS.DOWN, DIRECTIONS.LEFT, DIRECTIONS.RIGHT];
+            const safeDirections = [];
+
+            possibleDirections.forEach(dir => {
+                const newHead = {
+                    x: snake.body[0].x + dir.x,
+                    y: snake.body[0].y + dir.y
+                };
+
+                // 检查边界
+                if (newHead.x < 0 || newHead.x >= GRID_WIDTH || newHead.y < 0 || newHead.y >= GRID_HEIGHT) {
+                    return;
+                }
+
+                // 检查自身碰撞
+                if (snake.body.some(segment => segment.x === newHead.x && segment.y === newHead.y)) {
+                    return;
+                }
+
+                // 检查与其他蛇的碰撞
+                let collision = false;
+                for (let otherSnake of otherSnakes) {
+                    if (otherSnake !== snake && otherSnake.alive) {
+                        if (otherSnake.body.some(segment => segment.x === newHead.x && segment.y === newHead.y)) {
+                            collision = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!collision) {
+                    safeDirections.push(dir);
+                }
+            });
+
+            if (safeDirections.length > 0) {
+                return safeDirections[Math.floor(Math.random() * safeDirections.length)];
+            }
+
+            // 如果没有安全方向，返回当前方向
+            return snake.direction;
+        }
+
+        // 检查游戏状态
+        function checkGameStatus() {
+            // 检查玩家是否死亡
+            if (!player.alive) {
+                gameOver();
+                return;
+            }
+
+            // 检查是否需要添加普通对手
+            const aliveNormalSnakes = otherSnakes.filter(snake => snake.alive && !snake.isBoss);
+            if (aliveNormalSnakes.length < 2 && !bossAppeared) {
+                addNormalEnemy();
+            }
+
+            // 检查是否应该出现BOSS
+            if (round >= 3 && !bossAppeared && aliveNormalSnakes.length === 0) {
+                spawnBoss();
+            }
+
+            // 检查BOSS是否被击败
+            if (bossAppeared && !bossDefeated) {
+                const boss = otherSnakes.find(snake => snake.isBoss && snake.alive);
+                if (!boss) {
+                    bossDefeated = true;
+                    round++;
+                    setTimeout(() => {
+                        addNormalEnemy();
+                    }, 2000);
+                }
+            }
+
+            // 检查是否所有蛇都死亡
+            const allSnakesDead = otherSnakes.every(snake => !snake.alive) && !player.alive;
+            if (allSnakesDead) {
+                gameWin();
+            }
+        }
+
+        // 添加普通对手
+        function addNormalEnemy() {
+            let x, y;
+            let attempts = 0;
+            
+            do {
+                x = Math.floor(Math.random() * GRID_WIDTH);
+                y = Math.floor(Math.random() * GRID_HEIGHT);
+                attempts++;
+            } while (isPositionOccupied(x, y) && attempts < 50);
+
+            if (attempts < 50) {
+                const enemy = new Snake(x, y, '#FF4444');
+                otherSnakes.push(enemy);
+            }
+        }
+
+        // 生成BOSS
+        function spawnBoss() {
+            bossAppeared = true;
+            bossDefeated = false;
+            
+            let x, y;
+            let attempts = 0;
+            
+            do {
+                x = Math.floor(Math.random() * GRID_WIDTH);
+                y = Math.floor(Math.random() * GRID_HEIGHT);
+                attempts++;
+            } while (isPositionOccupied(x, y) && attempts < 50);
+
+            if (attempts < 50) {
+                const boss = new Snake(x, y, '#8B0000', false, true);
+                boss.isBoss = true;
+                otherSnakes.push(boss);
+                
+                showStatus("⚠️ 强大BOSS出现！消灭它继续游戏！ ⚠️", 'boss-warning');
+            }
+        }
+
+        // 检查位置是否被占用
+        function isPositionOccupied(x, y) {
+            // 检查玩家
+            if (player.body.some(segment => segment.x === x && segment.y === y)) {
+                return true;
+            }
+
+            // 检查其他蛇
+            for (let snake of otherSnakes) {
+                if (snake.alive && snake.body.some(segment => segment.x === x && segment.y === y)) {
+                    return true;
+                }
+            }
+
+            // 检查食物
+            if (foods.some(food => food.x === x && food.y === y)) {
+                return true;
+            }
+
+            return false;
+        }
+
+        // 显示状态信息
+        function showStatus(message, className = '') {
+            statusDiv.textContent = message;
+            statusDiv.className = 'status ' + className;
+        }
+
+        // 更新UI
+        function updateUI() {
+            playerLengthDiv.textContent = player.body.length;
+            const normalEnemies = otherSnakes.filter(snake => snake.alive && !snake.isBoss).length;
+            normalEnemiesDiv.textContent = normalEnemies;
+            bossStatusDiv.textContent = bossAppeared ? (bossDefeated ? '已击败' : '活跃中') : '未出现';
+            roundDiv.textContent = round;
+        }
+
+        // 绘制游戏
+        function draw() {
+            // 清空画布
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            // 绘制网格（可选）
+            ctx.strokeStyle = '#111';
+            ctx.lineWidth = 1;
+            for (let x = 0; x <= CANVAS_WIDTH; x += GRID_SIZE) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, CANVAS_HEIGHT);
+                ctx.stroke();
+            }
+            for (let y = 0; y <= CANVAS_HEIGHT; y += GRID_SIZE) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(CANVAS_WIDTH, y);
+                ctx.stroke();
+            }
+
+            // 绘制食物
+            foods.forEach(food => {
+                ctx.fillStyle = food.color;
+                ctx.fillRect(
+                    food.x * GRID_SIZE + 2,
+                    food.y * GRID_SIZE + 2,
+                    GRID_SIZE - 4,
+                    GRID_SIZE - 4
+                );
+            });
+
+            // 绘制蛇
+            player.draw();
+            otherSnakes.forEach(snake => snake.draw());
+        }
+
+        // 游戏结束
+        function gameOver() {
+            gameRunning = false;
+            clearInterval(gameLoop);
+            showStatus(`💀 游戏结束！你坚持了 ${round} 回合 💀`, '');
+            draw();
+        }
+
+        // 游戏胜利
+        function gameWin() {
+            gameRunning = false;
+            clearInterval(gameLoop);
+            showStatus('🎉 恭喜！你消灭了所有对手！ 🎉', '');
+            draw();
+        }
+
+        // 开始游戏
+        initGame();
+    </script>
+</body>
+</html>
